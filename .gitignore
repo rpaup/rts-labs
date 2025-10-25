@@ -1,0 +1,17 @@
+.vs/
+*.suo
+*.user
+
+[Bb]in/
+[Bb]uild/
+[Dd]ebug/
+[Rr]elease/
+x64/
+Win32/
+
+*.obj
+*.ilk
+*.pdb
+*.tlog
+*.pch
+*.exe
