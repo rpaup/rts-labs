@@ -1,32 +1,58 @@
 ﻿#include <iostream>
-#include <ctime> 
+#include <thread>
+#include <chrono>
+#include <string>
+#include <vector>
 
-long long factorial(int n) {
-    long long result = 1;
-    for (int i = 1; i <= n; ++i) {
-        result *= i;
-    }
-    return result;
-}
+void calculate_factorials(const std::string& thread_name) {
+    auto factorial = [](int n) {
+        long long res = 1;
+        for (int i = 1; i <= n; ++i) {
+            res *= i;
+        }
+        return res;
+        };
 
-int main() {
     const int N = 10;
     const int ITERATIONS = 10000000; 
-
-    std::cout << "Calculating " << N << "! " << ITERATIONS << " times..." << std::endl;
-
-    clock_t start = clock();
 
     for (int i = 0; i < ITERATIONS; ++i) {
         factorial(N);
     }
+}
 
-    clock_t end = clock();
+int main() {
+    // --- ПАРАЛЛЕЛЬНЫЙ ЗАПУСК ---
+    std::cout << "--- Parallel execution ---" << std::endl;
 
-    double seconds = (double)(end - start) / CLOCKS_PER_SEC;
+    auto start_parallel = std::chrono::high_resolution_clock::now();
 
-    std::cout << "Factorial value: " << factorial(N) << std::endl;
-    std::cout << "Execution time: " << seconds << " seconds" << std::endl;
+    // Создаем и запускаем 2 потока
+    std::thread thread1(calculate_factorials, "t1");
+    std::thread thread2(calculate_factorials, "t2");
+
+    // Ожидаем завершения обоих потоков
+    thread1.join();
+    thread2.join();
+
+    auto end_parallel = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration_parallel = end_parallel - start_parallel;
+    std::cout << "Total parallel execution time: " << duration_parallel.count() << " seconds" << std::endl;
+    std::cout << std::endl;
+
+
+    // --- ПОСЛЕДОВАТЕЛЬНЫЙ ЗАПУСК ---
+    std::cout << "--- Sequential execution ---" << std::endl;
+
+    auto start_sequential = std::chrono::high_resolution_clock::now();
+
+    // Вызываем функцию два раза подряд в главном потоке
+    calculate_factorials("sequential_1");
+    calculate_factorials("sequential_2");
+
+    auto end_sequential = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration_sequential = end_sequential - start_sequential;
+    std::cout << "Total sequential execution time: " << duration_sequential.count() << " seconds" << std::endl;
 
     return 0;
 }
