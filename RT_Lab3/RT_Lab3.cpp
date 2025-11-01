@@ -6,7 +6,8 @@
 
 // --- Глобальные переменные ---
 // Общий "мешок" с монетами
-int coins = 101;
+const int INITIAL_COINS = 101; 
+int coins = INITIAL_COINS;
 
 // "Карманы" каждого вора
 int bob_coins = 0;
@@ -18,6 +19,8 @@ std::mutex coin_mutex;
 // Функция, описывающая поведение вора
 void coin_sharing(const std::string& name, int& thief_coins, int& companion_coins)
 {
+    const int stop_limit = (INITIAL_COINS % 2 == 0) ? 0 : 1;
+
     // Воры делят монеты, пока в мешке есть что делить (больше одной монеты)
     while (true)
     {
@@ -25,7 +28,7 @@ void coin_sharing(const std::string& name, int& thief_coins, int& companion_coin
         coin_mutex.lock();
 
         // Проверяем условие выхода из цикла
-        if (coins <= 1) {
+        if (coins <= stop_limit) {
             // Если монет осталось 1 или меньше, дележка окончена
             coin_mutex.unlock(); // Не забываем разблокировать перед выходом!
             break;
