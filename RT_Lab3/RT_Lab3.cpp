@@ -6,7 +6,7 @@
 
 // --- Глобальные переменные ---
 // Общий "мешок" с монетами
-const int INITIAL_COINS = 101; 
+const int INITIAL_COINS = 100; 
 int coins = INITIAL_COINS;
 
 // "Карманы" каждого вора
