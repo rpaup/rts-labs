@@ -4,76 +4,77 @@
 #include <string>
 #include <chrono>
 #include <atomic>
-#include <algorithm>
+#include <algorithm> 
+
+const int GLUTTONY = 10;
+const int EFFICIENCY_FACTOR = 11;
+
+const int EXPLOSION_LIMIT = 10000;
+
 
 class CustomMutex {
 private:
-    std::atomic<bool> locked = { false };
+    std::atomic<bool> _locked;
 
 public:
+    CustomMutex() : _locked(false) {}
+
     void lock() {
         bool expected = false;
-        // Пытаемся изменить locked с false на true.
-        // compare_exchange_weak возвращает true, если замена удалась.
-        // Если locked было true (занято), то expected станет true, и цикл продолжится.
-        while (!locked.compare_exchange_weak(expected, true, std::memory_order_acquire)) {
-            expected = false; // Сбрасываем expected обратно в false для следующей попытки
-
-            // yield говорит планировщику ОС, что этот поток можно приостановить,
-            // чтобы дать поработать другим. Это предотвращает 100% загрузку ядра пустым циклом.
+        while (!_locked.compare_exchange_weak(expected, true, std::memory_order_acquire)) {
+            expected = false;
             std::this_thread::yield();
         }
     }
 
     void unlock() {
-        // Освобождаем мьютекс: просто пишем false
-        locked.store(false, std::memory_order_release);
+        _locked.store(false, std::memory_order_release);
     }
 };
-
-const int EXPLOSION_LIMIT = 10000;
-
-// Чтобы проверить работу без sleep, нужно поменять параметры, иначе все закончится за доли секунды.
-// Вариант эксперимента "Кука уволили" (Толстяки едят быстрее, чем готовят):
-const int GLUTTONY = 100;
-const int EFFICIENCY_FACTOR = 5;
 
 std::vector<int> dishes = { 3000, 3000, 3000 };
 std::vector<int> eaten_nuggets = { 0, 0, 0 };
 
-CustomMutex shared_mutex;
+CustomMutex my_mutex;
 
 std::atomic<bool> simulation_running(true);
-std::string outcome = "Кук уволился сам! (Время вышло)";
+std::string outcome = "Кук уволился сам! (Прошло 5 дней)";
+
+std::atomic<int> current_round(0);
+std::atomic<int> finished_eaters_count(3);
 
 void cook_thread() {
     while (simulation_running) {
-        shared_mutex.lock();
-
-        if (simulation_running) {
-            for (int i = 0; i < 3; ++i) {
-                dishes[i] += EFFICIENCY_FACTOR;
-            }
+        while (finished_eaters_count.load() < 3) {
+            if (!simulation_running) return;
+            std::this_thread::yield();
         }
 
-        shared_mutex.unlock();
+        my_mutex.lock();
+        if (!simulation_running) { my_mutex.unlock(); break; }
 
-        std::this_thread::yield();
+        for (int i = 0; i < 3; ++i) {
+            dishes[i] += EFFICIENCY_FACTOR;
+        }
+
+        my_mutex.unlock();
+
+        finished_eaters_count.store(0);
+        current_round.fetch_add(1);
     }
 }
 
 void fat_man_thread(int id) {
+    int last_round_seen = 0;
+
     while (simulation_running) {
-        if (eaten_nuggets[id] >= EXPLOSION_LIMIT) {
+        while (current_round.load() <= last_round_seen) {
+            if (!simulation_running) return;
             std::this_thread::yield();
-            continue;
         }
 
-        shared_mutex.lock();
-        if (!simulation_running) {
-            shared_mutex.unlock();
-            break;
-        }
+        my_mutex.lock();
+        if (!simulation_running) { my_mutex.unlock(); break; }
 
         int room_in_stomach = EXPLOSION_LIMIT - eaten_nuggets[id];
         int nuggets_to_eat = std::min({ dishes[id], GLUTTONY, room_in_stomach });
@@ -95,15 +96,21 @@ void fat_man_thread(int id) {
             simulation_running = false;
         }
 
-        shared_mutex.unlock();
-        std::this_thread::yield();
+        my_mutex.unlock();
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+        last_round_seen = current_round.load();
+        finished_eaters_count.fetch_add(1);
     }
 }
 
 int main() {
     setlocale(LC_ALL, "Russian");
 
-    std::cout << "Лабораторная №5 с CustomMutex" << std::endl;
+    std::cout << "GLUTTONY: " << GLUTTONY << std::endl;
+    std::cout << "EFFICIENCY_FACTOR: " << EFFICIENCY_FACTOR << std::endl;
+    std::cout << "------------------------------------------" << std::endl;
 
     std::thread cook(cook_thread);
     std::vector<std::thread> fat_men;
@@ -111,28 +118,29 @@ int main() {
         fat_men.emplace_back(fat_man_thread, i);
     }
 
+    auto start_time = std::chrono::steady_clock::now();
     while (simulation_running) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        static int ticks = 0;
-        if (++ticks > 50) {
+        auto current_time = std::chrono::steady_clock::now();
+        if (std::chrono::duration_cast<std::chrono::seconds>(current_time - start_time).count() >= 5) {
             simulation_running = false;
             break;
         }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    cook.join();
+    if (cook.joinable()) cook.join();
     for (auto& t : fat_men) {
-        t.join();
+        if (t.joinable()) t.join();
     }
 
     std::cout << "------------------------------------------" << std::endl;
+    std::cout << "Симуляция завершена!" << std::endl;
     std::cout << "ИТОГ: " << outcome << std::endl;
     std::cout << "------------------------------------------" << std::endl;
-    std::cout << "Финальное состояние:" << std::endl;
+
     for (int i = 0; i < 3; ++i) {
         std::cout << "Толстяк #" << i + 1 << " съел: " << eaten_nuggets[i]
-            << " наггетсов. | Ост. на тарелке: " << dishes[i]
-            << " наггетсов." << std::endl;
+            << " | Осталось: " << dishes[i] << std::endl;
     }
 
     return 0;
